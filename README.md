@@ -1,9 +1,44 @@
 # Resume
 
 Source for [nathanfightmaster.com](https://nathanfightmaster.com), Nathan Fightmaster's resume. It is a single
-static page, built with Astro and Tailwind CSS v4 and hosted on Azure Static Web Apps. The page
-ships no client-side JavaScript. Its print stylesheet lays it out as a one-page, letter-size PDF,
-which the build renders and publishes as `/Nathan-Fightmaster-Resume.pdf`.
+static page, built with Astro and Tailwind CSS v4 and hosted on Azure Static Web Apps. The only
+client-side JavaScript is a small analytics beacon. Its print stylesheet lays it out as a
+one-page, letter-size PDF, which the build renders and publishes as
+`/Nathan-Fightmaster-Resume.pdf`.
+
+## How this site works
+
+```
+build:    src/data/resume.ts ─► Astro ─► static HTML ─┬─► Azure Static Web Apps
+                                 └► Playwright ─► PDF ┘
+
+visits:   page beacon ─► /api/visit (Azure Function) ─► Table Storage
+                                    └─► alert email (tagged links only)
+
+weekly:   GitHub Actions ─► digest email + delete rows older than 90 days
+```
+
+- **One data file.** Every word of the resume lives in `src/data/resume.ts`. The page, the PDF,
+  and the search/link-preview metadata are all generated from it, so they can't drift apart.
+- **The PDF is the web page, printed.** There's no separate PDF template. The build prints the
+  page with its print stylesheet in headless Chromium and enforces one page: it drops bullets
+  marked as optional if it has to, and fails the build if that isn't enough. The phone number
+  goes only into the PDF; the build checks that it never reaches the HTML.
+- **Hosting.** GitHub Actions builds the site and deploys it to Azure Static Web Apps on every
+  push to `main`; each pull request gets its own preview environment.
+- **Analytics, built rather than bought.** A few lines of script send a fire-and-forget
+  `sendBeacon` on page view and PDF click; the page behaves the same if it fails. An Azure
+  Function (`api/`) drops bots, looks up the visitor's country and network owner in a local
+  IPinfo Lite database (no third-party lookup API), stores the IP only as a salted HMAC, and
+  writes one row to Azure Table Storage. Links shared with a `?r=<tag>` tracking tag also send an
+  instant email through Azure Communication Services, deduplicated and capped per hour.
+- **Digest and retention.** A scheduled GitHub Actions job (`digest/`) emails a weekly summary,
+  grouped by tracking tag and network, and deletes rows older than 90 days. It signs in to Azure
+  with OIDC (Entra ID), so the workflow holds no storage or email keys.
+- **This repo is a published copy.** The site is developed in a private repo. On each merge to
+  `main`, a workflow (`.github/workflows/sync-public-repo.yml`) copies an allowlist of paths here
+  as one commit, after a guard checks that nothing outside the allowlist or containing the phone
+  number slipped in.
 
 ## Develop
 
@@ -75,6 +110,8 @@ src/
   layouts/     Base.astro (document head and meta tags)
   pages/       index.astro
   styles/      global.css (Tailwind, fonts, print stylesheet)
-public/        static files (favicon)
+public/        static files (favicon, staticwebapp.config.json)
 scripts/       build-pdf.mjs (both builds, PDF render, page and leak checks)
+api/           Azure Function: POST /api/visit (beacon ingest, tracked-link alerts)
+digest/        weekly digest email and 90-day retention job
 ```
