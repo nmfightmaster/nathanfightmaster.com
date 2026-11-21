@@ -1,0 +1,50 @@
+---
+import type { Header } from "../data/types";
+
+interface Props {
+  header: Header;
+  /** Web-only download link to the PDF that scripts/build-pdf.mjs writes. */
+  pdfHref: string;
+}
+
+const { header, pdfHref } = Astro.props;
+// Each item after the first carries its own separator, so hiding an item hides its separator too.
+const item = "whitespace-nowrap [&+&]:before:mx-2 [&+&]:before:text-rule [&+&]:before:content-['·']";
+---
+
+<header class="mb-6">
+  <h1 class="font-mono text-3xl font-bold text-accent">{header.name}</h1>
+  <p class="mt-1 font-mono text-base">{header.title}</p>
+  <ul class="mt-1 flex flex-wrap font-mono text-sm text-muted">
+    <li class={item}>
+      <a class="underline-offset-2 hover:text-accent hover:underline" href={`mailto:${header.email}`}>
+        {header.email}
+      </a>
+    </li>
+    <li class={item}>{header.location}</li>
+    {header.phone && <li class:list={[item, "hidden print:block"]}>{header.phone}</li>}
+    <li class:list={[item, "hidden print:block"]}>{header.site}</li>
+    <li class:list={[item, "print:hidden"]}>
+      <a
+        class="inline-flex items-center gap-1 text-accent underline underline-offset-2 hover:no-underline"
+        href={pdfHref}
+        download
+      >
+        <svg
+          class="size-[1em] shrink-0"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <path d="M12 3v12M7 10l5 5 5-5M5 21h14"></path>
+        </svg>
+        <span class="sr-only">Download </span>PDF
+      </a>
+    </li>
+  </ul>
+</header>

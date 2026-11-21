@@ -1,0 +1,22 @@
+---
+import Base from "../layouts/Base.astro";
+import Header from "../components/Header.astro";
+import Summary from "../components/Summary.astro";
+import Experience from "../components/Experience.astro";
+import Skills from "../components/Skills.astro";
+import Beacon from "../components/Beacon.astro";
+import { resume } from "../data/resume";
+
+// Written by scripts/build-pdf.mjs (PDF_NAME) during `npm run build`.
+const pdfHref = "/Nathan-Fightmaster-Resume.pdf";
+---
+
+<Base>
+  <main class="mx-auto max-w-3xl px-4 py-10 leading-relaxed">
+    <Header header={resume.header} pdfHref={pdfHref} />
+    <Summary summary={resume.summary} />
+    <Experience experience={resume.experience} />
+    <Skills skills={resume.skills} />
+  </main>
+  <Beacon />
+</Base>

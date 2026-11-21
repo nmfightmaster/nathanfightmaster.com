@@ -1,0 +1,114 @@
+name: Sync public repo
+
+# Publishes the site source to the public, read-only repo nmfightmaster/nathanfightmaster.com.
+# Only an allowlist of tracked paths is copied, byte-for-byte from the commit (git archive), so
+# a new file stays private until it is added to ALLOWLIST on purpose. Each sync is one snapshot
+# commit on the public main: no mirrored history, no force-push. Auth is an SSH deploy key that
+# can write to that one repo only.
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-public-repo
+  cancel-in-progress: false
+
+env:
+  PUBLIC_REPO: nmfightmaster/nathanfightmaster.com
+  ALLOWLIST: >-
+    src public scripts api digest .github/workflows
+    astro.config.mjs tsconfig.json package.json package-lock.json .gitignore README.md
+
+defaults:
+  run:
+    # bash -eo pipefail, so a failed git archive or curl can't hide behind a pipe.
+    shell: bash
+
+jobs:
+  sync:
+    # Never sync from a branch, even when run by hand.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # Host keys come from GitHub's API over HTTPS rather than ssh-keyscan, so the first
+      # connection is verified.
+      - name: Configure SSH
+        env:
+          DEPLOY_KEY: ${{ secrets.PUBLIC_REPO_DEPLOY_KEY }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/public_repo_key
+          chmod 600 ~/.ssh/public_repo_key
+          curl -fsSL https://api.github.com/meta | jq -r '.ssh_keys[] | "github.com " + .' > ~/.ssh/known_hosts
+          echo "GIT_SSH_COMMAND=ssh -i ~/.ssh/public_repo_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes" >> "$GITHUB_ENV"
+
+      - name: Build export tree
+        run: |
+          git clone --quiet "git@github.com:${PUBLIC_REPO}.git" "$RUNNER_TEMP/public"
+          # Start from an empty tree so files removed here are removed there too.
+          find "$RUNNER_TEMP/public" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          # shellcheck disable=SC2086 # ALLOWLIST is a space-separated list of paths
+          git archive --format=tar HEAD -- $ALLOWLIST | tar -x -C "$RUNNER_TEMP/public"
+
+      # Fails, before anything is pushed, if the export contains a path outside the allowlist,
+      # a reference to the private planning files, or the phone number. The patterns are written
+      # so this file, which is itself exported, doesn't match them.
+      - name: Guard
+        working-directory: ${{ runner.temp }}/public
+        env:
+          RESUME_PHONE: ${{ secrets.RESUME_PHONE }}
+        run: |
+          fail=0
+
+          allowed='^(src|public|scripts|api|digest)/|^\.github/workflows/|^(astro\.config\.mjs|tsconfig\.json|package\.json|package-lock\.json|\.gitignore|README\.md)$'
+          outside=$(find . -path ./.git -prune -o -type f -print | sed 's|^\./||' | grep -vE "$allowed" || true)
+          if [ -n "$outside" ]; then
+            echo "::error::Paths outside the allowlist:"; echo "$outside"; fail=1
+          fi
+
+          refs=$(grep -rlE --exclude-dir=.git 'PLAN\.md|CLAUDE\.md|archive/v[1]|doc[s]/' . || true)
+          if [ -n "$refs" ]; then
+            echo "::error::Files referencing private paths:"; echo "$refs"; fail=1
+          fi
+
+          digits=$(printf '%s' "$RESUME_PHONE" | tr -cd '0-9')
+          if [ "${#digits}" -lt 7 ]; then
+            echo "::error::RESUME_PHONE is unset or has fewer than 7 digits"; fail=1
+          else
+            # Same test as the PDF leak check: the digits in order, ignoring separators.
+            while IFS= read -r -d '' f; do
+              if tr -cd '0-9' < "$f" | grep -qF "$digits"; then
+                echo "::error::Phone number found in $f"; fail=1
+              fi
+            done < <(find . -path ./.git -prune -o -type f -print0)
+          fi
+
+          [ "$fail" -eq 0 ] || exit 1
+          echo "Guard passed: $(find . -path ./.git -prune -o -type f -print | wc -l) files"
+
+      - name: Commit and push
+        working-directory: ${{ runner.temp }}/public
+        env:
+          GIT_AUTHOR_NAME: Nathan Fightmaster
+          GIT_AUTHOR_EMAIL: 25123560+nmfightmaster@users.noreply.github.com
+          GIT_COMMITTER_NAME: Nathan Fightmaster
+          GIT_COMMITTER_EMAIL: 25123560+nmfightmaster@users.noreply.github.com
+        run: |
+          git add -A
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "Public repo already matches; nothing to sync."
+            exit 0
+          fi
+          git commit --quiet -m "chore: sync site source"
+          git push origin HEAD:refs/heads/main

@@ -1,0 +1,25 @@
+{
+  "name": "resume",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro check && node scripts/build-pdf.mjs",
+    "build:web": "astro check && node scripts/build-pdf.mjs --web-only",
+    "preview": "astro preview",
+    "astro": "astro"
+  },
+  "dependencies": {
+    "@fontsource/inter": "^5.3.0",
+    "@fontsource/jetbrains-mono": "^5.3.0",
+    "astro": "^7.3.8"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.12",
+    "@tailwindcss/vite": "^4.3.5",
+    "pdf-lib": "^1.17.1",
+    "playwright": "^1.65.1",
+    "tailwindcss": "^4.3.5",
+    "typescript": "^6.0.3"
+  }
+}

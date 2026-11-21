@@ -1,0 +1,26 @@
+---
+import type { SkillGroup } from "../data/types";
+import SectionHeading from "./SectionHeading.astro";
+
+interface Props {
+  skills: SkillGroup[];
+}
+
+const { skills } = Astro.props;
+---
+
+<section aria-labelledby="skills">
+  <SectionHeading id="skills">Skills</SectionHeading>
+  {/* "Label: values" on one line, not a label column: layout-analysis ATS parsers detach a
+      short label from its values across a wide gap. */}
+  <dl class="space-y-1">
+    {
+      skills.map((group) => (
+        <div class="pl-4 -indent-4">
+          <dt class="inline font-mono text-sm font-bold text-muted">{group.label}:</dt>{" "}
+          <dd class="inline">{group.items.join(", ")}</dd>
+        </div>
+      ))
+    }
+  </dl>
+</section>

@@ -1,0 +1,48 @@
+---
+// Analytics beacon. Fire-and-forget: it never blocks rendering, and the page
+// works the same if /api/visit is missing or fails.
+//   ?r=<tag>  tracking tag for one application; sent with every event from that URL.
+//   ?me=1     opts this device out for good (localStorage); ?me=off opts back in. The param is
+//             removed from the address bar. Any value works: it only stops Nathan's own visits
+//             being counted, so it needn't be secret.
+---
+
+<script>
+  const OPT_OUT_KEY = "visit-opt-out";
+  const url = new URL(location.href);
+
+  let optedOut = false;
+  try {
+    const me = url.searchParams.get("me");
+    if (me === "off") localStorage.removeItem(OPT_OUT_KEY);
+    else if (me !== null) localStorage.setItem(OPT_OUT_KEY, "1");
+    optedOut = localStorage.getItem(OPT_OUT_KEY) === "1";
+  } catch {
+    // Storage blocked: treat as a normal visitor.
+  }
+  if (url.searchParams.has("me")) {
+    url.searchParams.delete("me");
+    history.replaceState(history.state, "", url.pathname + url.search + url.hash);
+  }
+
+  // navigator.webdriver: automated browsers, including the PDF build's own Playwright run.
+  if (!optedOut && !navigator.webdriver && "sendBeacon" in navigator) {
+    const tag = url.searchParams.get("r") ?? "";
+    const send = (event: "view" | "pdf") => {
+      try {
+        navigator.sendBeacon(
+          "/api/visit",
+          JSON.stringify({ event, path: location.pathname, referrer: document.referrer, tag }),
+        );
+      } catch {
+        // Never let analytics surface an error.
+      }
+    };
+
+    send("view");
+    document.addEventListener("click", (e) => {
+      const link = e.target instanceof Element ? e.target.closest("a[href$='.pdf']") : null;
+      if (link) send("pdf");
+    });
+  }
+</script>

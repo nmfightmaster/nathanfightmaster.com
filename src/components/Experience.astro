@@ -1,0 +1,65 @@
+---
+import type { Employer } from "../data/types";
+import DateRange from "./DateRange.astro";
+import SectionHeading from "./SectionHeading.astro";
+
+interface Props {
+  experience: Employer[];
+}
+
+const { experience } = Astro.props;
+// Dates sit inline right after the title (not right-aligned): layout-analysis ATS parsers
+// split a line at a wide gap and detach the date from its title.
+---
+
+<section aria-labelledby="experience" class="mb-6">
+  <SectionHeading id="experience">Experience</SectionHeading>
+  {
+    experience.map((employer) => (
+      <article>
+        <h3 class="font-semibold">
+          {employer.name}
+          <span class="font-normal text-muted">, {employer.location}</span>{" "}
+          <span class="font-normal whitespace-nowrap">
+            <span class="text-muted">·</span>{" "}
+            <DateRange dates={employer.dates} />
+          </span>
+        </h3>
+
+        <ul class="mt-1">
+          {employer.roles.map((role) => (
+            <li>
+              {role.title}{" "}
+              <span class="whitespace-nowrap">
+                <span class="text-muted">·</span>{" "}
+                <DateRange dates={role.dates} />
+              </span>
+            </li>
+          ))}
+        </ul>
+
+        <p class="mt-2 text-muted italic">{employer.transition}</p>
+
+        {employer.projects.map((project) => (
+          <section class="mt-4">
+            <h4 class="font-mono font-bold text-accent">
+              {project.name}{" "}
+              <span class="font-normal whitespace-nowrap">
+                <span class="text-muted">·</span>{" "}
+                <DateRange dates={project.dates} />
+              </span>
+            </h4>
+            <p class="mt-0.5 text-muted">{project.context}</p>
+            <ul class="mt-1 list-disc space-y-1 pl-5 marker:text-rule">
+              {project.bullets.map((bullet) => (
+                <li data-cut-first={bullet.cutFirst ? "" : undefined}>{bullet.text}</li>
+              ))}
+            </ul>
+          </section>
+        ))}
+
+        <p class="mt-4">{employer.earlier}</p>
+      </article>
+    ))
+  }
+</section>

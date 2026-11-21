@@ -1,0 +1,115 @@
+name: Azure Static Web Apps CI/CD
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches:
+      - main
+
+jobs:
+  build_and_deploy_job:
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action != 'closed')
+    runs-on: ubuntu-latest
+    name: Build and Deploy Job
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          lfs: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.x
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chromium for the PDF build
+        run: npx playwright install --with-deps chromium
+
+      # Builds the site and the PDF into dist/ (scripts/build-pdf.mjs). The phone number is only
+      # exposed to this step; the script fails if it is unset or leaks outside the PDF.
+      - name: Build
+        run: npm run build
+        env:
+          RESUME_PHONE: ${{ secrets.RESUME_PHONE }}
+
+      # The visit function (api/). Installed and tested here, then uploaded as-is
+      # (skip_api_build), so the deploy runs exactly what was tested.
+      - name: Install and test API
+        run: |
+          npm ci --omit=dev --prefix api
+          npm test --prefix api
+
+      # The weekly digest (digest/) isn't deployed; it runs from weekly-digest.yml on main.
+      # Testing it here means PRs catch breakage before the Monday run does.
+      - name: Test digest
+        run: |
+          npm ci --prefix digest
+          npm test --prefix digest
+
+      # IPinfo Lite (country + network owner; CC BY-SA 4.0) for the visit function. The free
+      # token comes from an IPinfo account. Without it, visits are stored unenriched.
+      - name: Fetch IP database
+        env:
+          IPINFO_TOKEN: ${{ secrets.IPINFO_TOKEN }}
+        run: |
+          if [ -z "$IPINFO_TOKEN" ]; then
+            echo "::warning::IPINFO_TOKEN is not set; visits will have no country or network."
+            exit 0
+          fi
+          curl -fsSL --retry 3 -o api/data/ipinfo_lite.mmdb \
+            "https://ipinfo.io/data/ipinfo_lite.mmdb?token=${IPINFO_TOKEN}"
+          ls -l api/data/ipinfo_lite.mmdb
+
+      # The SWA's deployment authorization policy is GitHub (OIDC), which can't be changed in the
+      # portal while the app is GitHub-linked, so the deploy needs a GitHub ID token.
+      - name: Get ID token
+        id: idtoken
+        uses: actions/github-script@v9
+        with:
+          script: return await core.getIDToken()
+          result-encoding: string
+
+      # Upload the prebuilt dist/ as-is; Azure's own build (Oryx) is skipped.
+      - name: Deploy
+        id: builddeploy
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_PROUD_MUSHROOM_046F10A1E }}
+          action: "upload"
+          app_location: "dist"
+          api_location: "api"
+          output_location: ""
+          skip_app_build: true
+          skip_api_build: true
+          github_id_token: ${{ steps.idtoken.outputs.result }}
+
+  close_pull_request_job:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    name: Close Pull Request Job
+    permissions:
+      id-token: write
+    steps:
+      # Same GitHub (OIDC) auth policy as the deploy job; the API token alone is rejected.
+      - name: Get ID token
+        id: idtoken
+        uses: actions/github-script@v9
+        with:
+          script: return await core.getIDToken()
+          result-encoding: string
+
+      - name: Close Pull Request
+        id: closepullrequest
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_PROUD_MUSHROOM_046F10A1E }}
+          action: "close"
+          github_id_token: ${{ steps.idtoken.outputs.result }}

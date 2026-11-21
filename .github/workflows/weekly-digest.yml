@@ -1,0 +1,55 @@
+name: Weekly visit digest
+
+# A weekly email summary of resume visits, plus 90-day retention.
+# Auth is OIDC to the Entra app `gh-cloud-resume-digest`, whose federated credential only trusts
+# refs/heads/main, so this runs (and can be run by hand) only on main. No secrets: the settings
+# are repo variables.
+
+on:
+  schedule:
+    # Mondays 16:00 UTC = 8:00 AM PST / 9:00 AM PDT. GitHub may start scheduled runs late.
+    - cron: "0 16 * * 1"
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: weekly-digest
+  cancel-in-progress: false
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.x
+          cache: npm
+          cache-dependency-path: digest/package-lock.json
+
+      - name: Install and test
+        run: |
+          npm ci --omit=dev --prefix digest
+          npm test --prefix digest
+
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # DefaultAzureCredential picks up the az CLI login from the previous step. The script logs
+      # only counts; the email body (networks, referrers) never goes to the run log.
+      - name: Send digest and apply retention
+        run: npm start --prefix digest
+        env:
+          TABLES_ENDPOINT: ${{ vars.TABLES_ENDPOINT }}
+          VISITS_TABLE: ${{ vars.VISITS_TABLE }}
+          ACS_ENDPOINT: ${{ vars.ACS_ENDPOINT }}
+          EMAIL_SENDER: ${{ vars.EMAIL_SENDER }}
+          DIGEST_TO: ${{ vars.DIGEST_TO }}
