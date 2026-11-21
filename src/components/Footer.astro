@@ -1,0 +1,12 @@
+---
+import { colophon } from "../data/seo";
+---
+
+<footer class="mt-10 font-mono text-sm text-muted print:hidden">
+  <p>
+    {colophon.builtWith}<span class="mx-2 text-rule" aria-hidden="true">·</span><a
+      class="whitespace-nowrap underline-offset-2 hover:text-accent hover:underline"
+      href={colophon.source.href}>{colophon.source.label}</a
+    >
+  </p>
+</footer>

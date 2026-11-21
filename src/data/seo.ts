@@ -33,3 +33,9 @@ export const personJsonLd = {
   knowsAbout: skills.flatMap((g) => g.items),
   description: summary,
 };
+
+/** Web-only footer line (hidden in print). */
+export const colophon = {
+  builtWith: "Built with Astro and Azure Static Web Apps",
+  source: { label: "Source on GitHub", href: "https://github.com/nmfightmaster/nathanfightmaster.com" },
+};
